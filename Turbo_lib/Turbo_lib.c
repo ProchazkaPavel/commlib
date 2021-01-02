@@ -711,6 +711,7 @@ int test_eff_turbo_update() {
 
 int main() {
   test_eff_turbo_update();
+  test_update_general_FSM();
   return 0;
 }
 

@@ -33,33 +33,32 @@ cdef extern from "Turbo_lib.h":
   void update_general_FSM_both(int N, double *pcv, double *pdv, double *outc, double *outd, long Md, long Ms, long Mc, long *S, long *Q)
   void eff_turbo_update(unsigned int N, float *b, float *c1, float *c2, unsigned int Md, unsigned int Ms, unsigned int Mc, unsigned int *S, unsigned int *Q, unsigned int *inter, unsigned int *deinter, unsigned int K)
 
-
 # create the wrapper code, with numpy type annotations
 def update_general_FSM_func(np.ndarray[double, ndim=1, mode="c"] pc not None,
-		   np.ndarray[double, ndim=1, mode="c"] pd not None,
-		   np.ndarray[double, ndim=1, mode="c"] out not None,
-		   np.ndarray[long, ndim=2, mode="c"] S not None,
-		   np.ndarray[long, ndim=2, mode="c"] Q not None):
+    np.ndarray[double, ndim=1, mode="c"] pd not None,
+    np.ndarray[double, ndim=1, mode="c"] out not None,
+    np.ndarray[long, ndim=2, mode="c"] S not None,
+    np.ndarray[long, ndim=2, mode="c"] Q not None):
     update_general_FSM  (pd.shape[0]/Q.shape[0],<double*> np.PyArray_DATA(pc),
-		<double*> np.PyArray_DATA(pd),
-		<double*> np.PyArray_DATA(out), 
-		Q.shape[0], Q.shape[1], np.max(Q) + 1, 
-		<long*> np.PyArray_DATA(S.flatten(1)), 
-		<long*> np.PyArray_DATA(Q.flatten(1)))
+    <double*> np.PyArray_DATA(pd),
+    <double*> np.PyArray_DATA(out), 
+    Q.shape[0], Q.shape[1], np.max(Q) + 1, 
+    <long*> np.PyArray_DATA(S.flatten('F')), 
+    <long*> np.PyArray_DATA(Q.flatten('F')))
 
 def update_general_FSM_both_func(np.ndarray[double, ndim=1, mode="c"] pc not None,
-		   np.ndarray[double, ndim=1, mode="c"] pd not None,
-		   np.ndarray[double, ndim=1, mode="c"] outc not None,
-		   np.ndarray[double, ndim=1, mode="c"] outd not None,
-		   np.ndarray[long, ndim=2, mode="c"] S not None,
-		   np.ndarray[long, ndim=2, mode="c"] Q not None):
-    update_general_FSM_both  (pd.shape[0]/Q.shape[0],<double*> np.PyArray_DATA(pc),
-		<double*> np.PyArray_DATA(pd),
-		<double*> np.PyArray_DATA(outc), 
-		<double*> np.PyArray_DATA(outd), 
-		Q.shape[0], Q.shape[1], np.max(Q) + 1, 
-		<long*> np.PyArray_DATA(S.flatten(1)), 
-		<long*> np.PyArray_DATA(Q.flatten(1)))
+   np.ndarray[double, ndim=1, mode="c"] pd not None,
+   np.ndarray[double, ndim=1, mode="c"] outc not None,
+   np.ndarray[double, ndim=1, mode="c"] outd not None,
+   np.ndarray[long, ndim=2, mode="c"] S not None,
+   np.ndarray[long, ndim=2, mode="c"] Q not None):
+   update_general_FSM_both  (pd.shape[0]/Q.shape[0],<double*> np.PyArray_DATA(pc),
+   <double*> np.PyArray_DATA(pd),
+   <double*> np.PyArray_DATA(outc),
+   <double*> np.PyArray_DATA(outd),
+   Q.shape[0], Q.shape[1], np.max(Q) + 1,
+   <long*> np.PyArray_DATA(S.flatten('F')),
+   <long*> np.PyArray_DATA(Q.flatten('F')))
 
 def update_FSM_func(np.ndarray[double, ndim=1, mode="c"] pc not None,
 		   np.ndarray[double, ndim=1, mode="c"] pd not None,

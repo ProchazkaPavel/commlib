@@ -1,28 +1,27 @@
 import matplotlib.pyplot as plt
 import numpy as np
-import os, sys, inspect
-sys.path.insert(0,'../LDPC_lib')
-sys.path.insert(1,'../EXIT_chats')
-import _LDPC_dec_lib
-import _GFq_LDPC_lib
-import LDPC_lib
-import GFq_LDPC_lib
-from EXIT_lib import evaluate_extrinsic_info_NI, generate_samples, plot_EXIT, plot_dec
-from rew import *
+#import os, sys, inspect
+#sys.path.insert(0,'../LDPC_lib')
+#sys.path.insert(1,'../EXIT_chats')
+#import _LDPC_dec_lib
+#import _GFq_LDPC_lib
+#import LDPC_lib
+##import GFq_LDPC_lib
+#from EXIT_lib import evaluate_extrinsic_info_NI, generate_samples, plot_EXIT, plot_dec
+#from rew import *
 #from numba import jit
 from joblib import Parallel, delayed
 import _Turbo_lib
 import time
 
 
-
 class FSM:
   def __init__(self, S = [], Q = []):
-    if S == []: # Simple convolutional code by default
+    if len(S) == 0: # Simple convolutional code by default
       self.S = np.array([[0,1],[1,0]], int)
     else:
       self.S = S # Md times Ms
-    if Q == []:
+    if len(Q) == 0:
       self.Q = np.array([[0,1],[1,0]], int)
     else:
       self.Q = Q
@@ -42,14 +41,16 @@ class FSM:
     return out
 
   def encode_eff(self, data, s0 = 0): # Cython function
-    out = numpy.zeros(data.shape,int)
+    out = np.zeros(data.shape,int)
     _Turbo_lib.FSM_encode(data, out, self.S, self.Q)
     return out
 
 
   def update(self, pc, pd): # provide BJRC algorithm on FSM (pc and pd are flatten soft inputs
     out = np.zeros(pd.shape)
-    _Turbo_lib.update_general_FSM_func(pc, pd, out,self.S, self.Q)
+    _Turbo_lib.update_general_FSM_func(pc, pd, out, self.S, self.Q)
+    #_Turbo_lib.update_general_FSM_func(pc, pd, out,self.S.flatten(), self.Q.flatten())
+    #_Turbo_lib.update_general_FSM_func(pc, pd, out,self.S, self.Q)
     return out
 
   def update_C(self, pc, pd): # provide BJRC algorithm on FSM (pc and pd are flatten soft inputs
@@ -105,7 +106,7 @@ class FSM:
     p = np.vstack([1-np.abs(c - epsilon), np.abs(c - epsilon)]) # softing the message
     return (self.update(p.flatten(1), np.ones(len(c)*2)*0.5)[::2] < 0.5) + 1 - 1
 
-  def test(self, SNR = 10, l = 10000, test_LLR = 1):
+  def test(self, SNR = 10, l = 10000, test_LLR = 0):
     '''
     Testing the FSM update (conv code in AWGN channel)
     S = Q = [[0,1],[1,0]] (K=1)
@@ -113,7 +114,16 @@ class FSM:
     d = np.random.randint(2, size=l)
     c = self.encode(d)
     s = 2*c - 1 # BPSK
-    (x, sigma2w) = AWGN(s, SNR)
+    
+    
+    # (x, sigma2w) = AWGN(s, SNR)    
+    alpha = 10**(float(SNR)/10) 
+    sigma2w = 1.0/alpha
+    real_noise = np.random.normal(0,np.sqrt(sigma2w),np.shape(s/2))
+    imag_noise = 1j * np.random.normal(0,np.sqrt(sigma2w),np.shape(s/2))
+    noise = 1.0/np.sqrt(2)  * (real_noise + imag_noise)
+    x = s + noise    
+    
     mu = np.zeros([l, 2])
     mu[:,0] = np.exp(-np.abs(x + 1)**2/sigma2w)
     mu[:,1] = np.exp(-np.abs(x - 1)**2/sigma2w)
@@ -131,8 +141,9 @@ class FSM:
     nerr_c = np.sum(np.argmax(res_conv, axis=1) != d)
     nerr_u = np.sum(np.argmax(mu, axis=1) != c)
     
-    print 'Nerr uncoded:%d, \t Nerr coded:%d, \t Time ref:%.6f'%(nerr_u, nerr_c, e_c-s_c)
-    print 'Nerr coded2:%d, \t Time coded2:%.6f'%(nerr_c2, e_c2-s_c2)
+    
+    print('Nerr uncoded:%d, \t Nerr coded:%d, \t Time ref:%.6f'%(nerr_u, nerr_c, e_c-s_c))
+    print('Nerr coded2:%d, \t Time coded2:%.6f'%(nerr_c2, e_c2-s_c2))
     if test_LLR:
       lc = np.log(mu[:,1]/mu[:,0]) # LLR from channel
       ld = np.zeros(l, float) # no a priory info
@@ -155,8 +166,8 @@ class FSM:
       _Turbo_lib.update_FSM_LLR1_int(lc_int, ld_int, res_LLRint)
       e_Lint = time.time()
       nerr_Lint = np.sum((np.sign(np.int64(res_LLRint)-z)+1)/2 != d)
-      print 'Nerr LLR:%d, \t Time LLR:%.6f, \t Nerr LLR2:%d, \t Time LLR2:%.6f, \t'%(nerr_L, e_L-s_L, nerr_L2, e_L2-s_L2)
-      print 'Nerr LLR_uint:%d, \t Time LLR_uint:%.6f'%(nerr_Lint, e_Lint-s_Lint)
+      print('Nerr LLR:%d, \t Time LLR:%.6f, \t Nerr LLR2:%d, \t Time LLR2:%.6f, \t'%(nerr_L, e_L-s_L, nerr_L2, e_L2-s_L2))
+      print('Nerr LLR_uint:%d, \t Time LLR_uint:%.6f'%(nerr_Lint, e_Lint-s_Lint))
 
       return nerr_u, nerr_c, nerr_L, nerr_Lint
     else:
@@ -188,8 +199,8 @@ class FSM:
     nerr_c = np.sum(np.argmax(res_conv, axis=1) != d)
     nerr_u = np.sum(np.argmax(mu, axis=1) != c)
     
-    print 'Nerr uncoded:%d, \t Nerr coded:%d, \t Time ref:%.6f'%(nerr_u, nerr_c, e_c-s_c)
-    print 'Nerr coded2:%d, \t Time coded2:%.6f'%(nerr_c2, e_c2-s_c2)
+    print('Nerr uncoded:%d, \t Nerr coded:%d, \t Time ref:%.6f'%(nerr_u, nerr_c, e_c-s_c))
+    print('Nerr coded2:%d, \t Time coded2:%.6f'%(nerr_c2, e_c2-s_c2))
     if test_LLR:
       lc = np.log(mu[:,1]/mu[:,0]) # LLR from channel
       ld = np.zeros(l, float) # no a priory info
@@ -200,7 +211,7 @@ class FSM:
       e_L = time.time()
       nerr_L = np.sum((np.sign(res_LLR)+1)/2 != d)
 
-      print 'Nerr LLR:%d, \t Time LLR:%.6f\t'%(nerr_L, e_L-s_L)
+      print('Nerr LLR:%d, \t Time LLR:%.6f\t'%(nerr_L, e_L-s_L))
 
     return nerr_u, nerr_c, nerr_L
  
@@ -214,6 +225,8 @@ class FSM:
     d = np.random.randint(2, size=l)
     c = self.encode(d)
     s = 2*c - 1 # BPSK
+
+   
     (x, sigma2w) = AWGN(s, SNR)
     mu = np.zeros([l, 2])
     mu[:,0] = np.exp(-np.abs(x + 1)**2/sigma2w)
@@ -232,8 +245,8 @@ class FSM:
     nerr_c = np.sum(np.argmax(res_conv, axis=1) != d)
     nerr_u = np.sum(np.argmax(mu, axis=1) != c)
     
-    print 'Nerr uncoded:%d, \t Nerr coded:%d, \t Time ref:%.6f'%(nerr_u, nerr_c, e_c-s_c)
-    print 'Nerr coded2:%d, \t Time coded2:%.6f'%(nerr_c2, e_c2-s_c2)
+    print('Nerr uncoded:%d, \t Nerr coded:%d, \t Time ref:%.6f'%(nerr_u, nerr_c, e_c-s_c))
+    print('Nerr coded2:%d, \t Time coded2:%.6f'%(nerr_c2, e_c2-s_c2))
     if test_LLR:
       lc = np.log(mu[:,1]/mu[:,0]) # LLR from channel
       ld = np.zeros(l, float) # no a priory info
@@ -244,10 +257,60 @@ class FSM:
       e_L = time.time()
       nerr_L = np.sum((np.sign(res_LLR)+1)/2 != d)
 
-      print 'Nerr LLR:%d, \t Time LLR:%.6f\t'%(nerr_L, e_L-s_L)
+      print('Nerr LLR:%d, \t Time LLR:%.6f\t'%(nerr_L, e_L-s_L))
 
     return nerr_u, nerr_c, nerr_L
 
+    def create_code(Aq = 2, depth = 3):
+        """
+        Aq-ary alphabet with given depth. Number of modulator states (and
+        corresponding complexity) is given by Aq ** (depth)
+        """
+        if depth == 3:
+            S = np.zeros([Aq,Aq**3],int)
+            Q = np.zeros([Aq,Aq**3], int)
+            for s in range(Aq**3):
+                for d in range(Aq):
+                    s0 = s % Aq
+                    s1 = (s / Aq) % Aq
+                    s2 = (s / Aq**2) % Aq
+                    S[d,s] = Aq**2 * (s2 ^ d) + Aq * (s0 ^ s2) + s1
+                    Q[d,s] = s2 ^ s0 ^ d
+
+        elif depth == 4:
+            S = np.zeros([Aq,Aq**4],int)
+            Q = np.zeros([Aq,Aq**4], int)
+            for s in range(Aq**4):
+                for d in range(Aq):
+                    s0 = s % Aq
+                    s1 = (s / Aq) % Aq
+                    s2 = (s / Aq**2) % Aq
+                    s3 = (s / Aq**3) % Aq
+                    S[d,s] = Aq**3 * (s3 ^ d) + Aq**2 * (s0 ^ s3) + Aq * s1 + s2
+                    Q[d,s] = s3 ^ s0 ^ d  
+
+
+        elif depth == 6:
+            S = np.zeros([Aq,Aq**6],int)
+            Q = np.zeros([Aq,Aq**6], int)
+            for s in range(Aq**6):
+                for d in range(Aq):
+                    ss = [(s / (Aq ** i)) % Aq for i in range(depth)]
+                    S[d,s] = Aq ** 5 * (ss[5] ^ d) + Aq**4 * (ss[0] ^ ss[5]) + Aq**3 * (ss[1]) + \
+                             Aq ** 2 * (ss[2] ) +  Aq * ss[3] + ss[4]
+                    Q[d,s] = ss[5] ^ ss[0] ^ d
+
+
+        else:
+            S = np.zeros([Aq,Aq**depth],int)
+            Q = np.zeros([Aq,Aq**depth], int)
+            for s in range(Aq**depth):
+                for d in range(Aq):
+                    ss = [(s / (Aq ** i)) % Aq for i in range(depth)]
+                    S[d,s] = Aq**(depth - 1) * (ss[depth - 1] ^ d) + \
+                    np.sum(np.asarray([Aq**(depth - i - 2) * ss[i] for i in  range(depth - 1)]))
+                    Q[d,s] = ss[depth - 1] ^ ss[0] ^ d
+        return FSM(S, Q)
  
 class Turbo_Coder:
   '''
@@ -269,8 +332,8 @@ class Turbo_Coder:
       self.deinter = np.zeros(k, dtype=np.uint32)
       self.S = np.zeros(self.code.S.flatten().shape, dtype=np.uint32)
       self.Q = np.zeros(self.code.Q.flatten().shape, dtype=np.uint32)
-      self.S[:] = self.code.S.flatten(1)
-      self.Q[:] = self.code.Q.flatten(1)
+      self.S[:] = self.code.S.flatten('F')
+      self.Q[:] = self.code.Q.flatten('F')
       self.eff = 32 # 32-bit arithmetic for decoding
     else:
       self.inter = np.zeros(k, int)
@@ -291,9 +354,9 @@ class Turbo_Coder:
     self.p = self.n - self.k
     self.Aq = Aq
     self.K = K
-    self.map_inds2 = np.asarray([2 * i * k / self.p for i in range(self.p/2)])
-    self.map_inds_c1 = np.asarray([2 * i * k / self.p for i in range(int(round(self.p/2.)))]) 
-    self.map_inds_c2 = np.asarray([2 * i * k / self.p for i in range(self.p/2)])
+    self.map_inds2 = np.asarray([2 * i * k // self.p for i in range(self.p//2)])
+    self.map_inds_c1 = np.asarray([2 * i * k // self.p for i in range(int(round(self.p/2.)))]) 
+    self.map_inds_c2 = np.asarray([2 * i * k // self.p for i in range(self.p//2)])
     
     if track == 1: # flag determining tracking of messages needed for EXIT analysis
       self.track_messages = 1 
@@ -332,7 +395,7 @@ class Turbo_Coder:
 #    print t2, self.map_inds_c1[:(p/2)]
 #    t1 = c1[self.map_inds_c1[:(p/2)]]
 #    print t1
-    cd = np.vstack([c1[self.map_inds_c1[:(p/2)]], c2[self.map_inds_c2]]).flatten(1)
+    cd = np.vstack([c1[self.map_inds_c1[:(p//2)]], c2[self.map_inds_c2]]).flatten('F')
     if (p % 2 == 1): # different length of c1 and c2
       cd = np.hstack([cd, c1[-1]])
     return np.hstack([b, cd]) # systematic mapping
@@ -352,7 +415,7 @@ class Turbo_Coder:
     mbi = mu_i[:k,:]
     mci = mu_i[k:,:]
     map_inds_c1 = self.map_inds_c1
-    map_inds_c2 = self.map_inds_c1
+    map_inds_c2 = self.map_inds_c2
 
     mci1t = np.ones([k, Aq], float)/Aq;  mci2t = np.ones([k, Aq], float)/Aq;
     mci1t[map_inds_c1, :] = mci[::2]
@@ -373,7 +436,6 @@ class Turbo_Coder:
     for i in range(0, K):
       if not tu1:
         out1 =  self.code.update(mci1, in1)
-        oo = out1.reshape(k, Aq)
         in2 = (out1 * mbi.flatten()).reshape(k, Aq)[inter]
         in2 = (in2.flatten()/ (in2.sum(axis=1).repeat(Aq)))
         if np.abs(out1-o1_test).sum() < thr: # if the update does not differ to much
@@ -394,15 +456,12 @@ class Turbo_Coder:
         self.i2o1[:, :, i] = in2.reshape(k, Aq) # input to dec 2 (out dec 1)
 
     mco1, out1 = self.code.update_both(mci1, in1)
-    oo = out1.reshape(k, Aq)
-#    in2 = (out1 * mci1).reshape(N, 4)[inter]
     in2 = (out1 * mbi.flatten()).reshape(k, Aq)[inter]
     in2 = (in2.flatten()/ (in2.sum(axis=1).repeat(Aq)))
     mco2, out2t = self.code.update_both(mci2, in2)
     out2 = out2t.reshape(k, Aq)[deinter].flatten()
 
     out = (out1 * out2 * mbi.flatten()).reshape(k, Aq)
-#  print out1.reshape(k, 2),  out2.reshape(k, 2)
     mbo = (out.flatten()/ (out.sum(axis=1).repeat(Aq))).reshape(k, Aq)
     mco = np.zeros([p, Aq], float)
     mco[::2, :] = mco1.reshape(k, Aq)[map_inds_c1, :]
@@ -420,13 +479,11 @@ class Turbo_Coder:
       mu_i .... input metric Assumed to be float32 type
     '''
     if self.eff != 32:
-      print 'Please enable eff flag'
+      print('Please enable eff flag')
     K = self.K
     k = np.uint32(self.k)
     p = self.p
     Aq = self.Aq
-    inter = self.inter
-    deinter = self.deinter
     mbi = mu_i[:k,:]
     mci = mu_i[k:,:]
     map_inds_c1 = self.map_inds_c1
@@ -473,16 +530,16 @@ class Turbo_Coder:
       for s in range(Aq**3):
         for d in range(Aq):
           s0 = s % Aq
-          s1 = (s / Aq) % Aq
-          s2 = (s / Aq**2) % Aq
+          s1 = (s // Aq) % Aq
+          s2 = (s // Aq**2) % Aq
           S[d,s] = Aq**2 * (s2 ^ d) + Aq * (s0 ^ s2) + s1
           Q[d,s] = s2 ^ s0 ^ d
 #      _Turbo_lib.create_matrix_SQ_XOR_mod(S, Q)    
-      _Turbo_lib.create_matrix_SQ_XOR(S, Q)    
+#      _Turbo_lib.create_matrix_SQ_XOR(S, Q)    
     return FSM(S, Q)
 
   def print_info(self):
-    print 'Turbo code information:\nk ... %d\nn ... %d\nrate ... %.3f\n'%(self.k, self.n, self.rate)
+    print('Turbo code information:\nk ... %d\nn ... %d\nrate ... %.3f\n'%(self.k, self.n, self.rate))
 
   def test(self, SNR = 0):
     '''
@@ -491,6 +548,8 @@ class Turbo_Coder:
     b = np.random.randint(2, size=self.k)
     c = self.encode(b)
     s = np.array([-1,1])[c] # BPSK mapper
+    
+
 
     ## AWGN ##
     alpha = 10**(float(SNR)/10) 
@@ -527,13 +586,13 @@ class Turbo_Coder:
       self.mu_o = mu_o
 
 #      self.err_eval()
-    print 'nerr_uncoded:', np.sum(np.argmax(mu[:self.k,:], axis = 1) != b )
-    print 'nerr_coded:',   np.sum(np.argmax(mu_o[:self.k,:], axis = 1) != b )
+    print('nerr_uncoded:', np.sum(np.argmax(mu[:self.k,:], axis = 1) != b ))
+    print('nerr_coded:',   np.sum(np.argmax(mu_o[:self.k,:], axis = 1) != b ))
     return b, mu_o
   
   def err_eval(self, mu, mu_o, b):
-    print 'nerr_uncoded:', np.sum(np.argmax(mu[:len(b),:], axis = 1) != b )
-    print 'nerr_coded:',   np.sum(np.argmax(mu_o[:len(b),:], axis = 1) != b )
+    print('nerr_uncoded:', np.sum(np.argmax(mu[:len(b),:], axis = 1) != b ))
+    print('nerr_coded:',   np.sum(np.argmax(mu_o[:len(b),:], axis = 1) != b ))
 
   def draw(self):
     ''' 
@@ -592,20 +651,19 @@ class Turbo_Coder:
 #    E_SSB = [edge(B1[i], SS[i], '') for i in range(self.k)] # input to data
     ## -- starting input
     
-    f = open('text/d.tex','w')
-    f.write('''
+    s=['''
 \\begin{tikzpicture}[
 FN/.style={rectangle,inner sep=0pt,minimum size=2ex, draw=black},
 VN/.style={circle,inner sep=0pt,minimum size=2ex, draw=black},
 dot/.style={circle,inner sep=0pt,minimum size=5pt, draw=black, fill=black},
-]''')
+]''']
     for i in [B1, S1, C1, Cc1, Bi, S2, C2, Cc2, SS,\
               E_BC1, E_SC1, E_CS1, E_CC1c, E_CC1n, E_BBi, E_BC2, E_SC2, E_CS2, E_CC2c, E_CC2n, E_SSB]:
       for a in i:
-        f.write(a.draw())
-    f.write('\\end{tikzpicture}')
+        s.append(a.draw())
+    s.append('\\end{tikzpicture}')
       
-    f.close()
+    return '\n'.join(s)
 
 def create_latex_array(matrix):
   if len(matrix.shape) == 2: # matrix
@@ -851,7 +909,7 @@ def track_turbo_dec(p0, code, d, inter, deinter, K): # decode the simplest turbo
 
   res = out2*out1*p0_syst / (1 - out2 - out1 - p0_syst + \
   out2 * out1 + out1 * p0_syst + out2 * p0_syst)
-  print np.sum(np.abs(d-(res < 0.5)))/float(N)
+  print(np.sum(np.abs(d-(res < 0.5)))/float(N))
   return np.array([MI_C1,MI_C2])
 
 def track_turbo_dec_HDF_GF4(mu, d,  inter, deinter, K):
@@ -894,7 +952,7 @@ def track_turbo_dec_HDF_GF4(mu, d,  inter, deinter, K):
   res = res/res.sum(axis=1).repeat(4).reshape(N,4)
   est = res[:,0] + res[:,3] < res[:,2] + res[:,1]
 
-  print np.sum(d != est)/float(N)
+  print(np.sum(d != est)/float(N))
   return np.array([MI_C1,MI_C2])
 
 
@@ -1224,7 +1282,7 @@ def test_general_code(N, SNR = -1, K=20):
 
   res = out2*out1*p0_syst / (1 - out2 - out1 - p0_syst + \
   out2 * out1 + out1 * p0_syst + out2 * p0_syst)
-  print np.sum(np.abs(d-(res < 0.5)))/float(N)
+  print(np.sum(np.abs(d-(res < 0.5)))/float(N))
  
   XX = np.asarray([MI_C1,MI_C2])
   plot_dec(XX, 'ko-', 5, 1)
@@ -1400,23 +1458,23 @@ def compare_performance(SNR):
   start_eff = time.time()
   mu_eff = decode_eff_test(mu32, K, C.k, C.p, 2, Ceff.inter, Ceff.deinter, Ceff.S, Ceff.Q, Ceff.map_inds_c1, Ceff.map_inds_c2)
   end_eff = time.time()
-  print '\nEfficient implementation:'
+  print('\nEfficient implementation:')
   C.err_eval(C.mu, mu_eff,  C.b)
    
   start_ref = time.time()
   mu = decode_test(C.mu, C.K, C.k, C.p, 2, C.inter, C.deinter, Ceff.S, Ceff.Q, C.map_inds_c1,  C.map_inds_c2,C.code)
   end_ref = time.time()
-  print '\nReference implementation:'
+  print('\nReference implementation:')
   C.err_eval(C.mu, mu, C.b)
 
   start_ref2 = time.time()
   C.decode(C.mu, 1e3)
   end_ref2 = time.time()
-  print '\nReference 2 implementation:'
+  print('\nReference 2 implementation:')
   C.err_eval(C.mu, mu, C.b)
 
-  print 'reference time:', end_ref-start_ref, ',\teff time:', end_eff-start_eff,\
-         'reference2 time:', end_ref2-start_ref2
+  print('reference time:', end_ref-start_ref, ',\teff time:', end_eff-start_eff,\
+         'reference2 time:', end_ref2-start_ref2)
 
 def LLR_evaluator(S, Q):
   '''
@@ -1465,7 +1523,7 @@ def eval_LLR(matr):
         s_a = 'lf'+str(j)
       elif j > M/2:
         s_a = 'lb'+str(j-M/2)
-      print i,j, matr[i,j]
+      print(i,j, matr[i,j])
       if cnt[j, matr[i,j]] == 0:
         st_str = res[j][matr[i,j]]
       else:
@@ -1481,9 +1539,9 @@ def eval_LLR(matr):
     for j in range(M):
       res[j][i] = res[j][i] + ')'  
   for i in range(M):
-    print 'num = ', res[i][1]
-    print 'denum = ', res[i][0]
-    print s_names[i], ' = num - denum\n'
+    print('num = ', res[i][1])
+    print('denum = ', res[i][0])
+    print(s_names[i], ' = num - denum\n')
   return res
     
 
